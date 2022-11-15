@@ -1,22 +1,26 @@
 package com.example.tasklist
 
-import android.app.Activity
 import android.content.Intent
-import androidx.appcompat.app.AppCompatActivity
+import android.net.Uri
 import android.os.Bundle
+import android.text.TextUtils
 import android.widget.Button
 import android.widget.EditText
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.widget.addTextChangedListener
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.room.Room
 
+
 class MainActivity : AppCompatActivity() {
 
-    private val list = mutableListOf<TaskEntity>()
+    private val list = mutableListOf<PersonEntity>()
     private val adapter = RecyclerAdapter(list)
 
-    lateinit var db: TaskDatabase
-    lateinit var dao: TaskDao
+    lateinit var db: PersonDatabase
+    lateinit var dao: PersonDao
 
     companion object {
         const val REQUEST_CODE = 1
@@ -30,62 +34,59 @@ class MainActivity : AppCompatActivity() {
 
         db = Room.databaseBuilder(
             applicationContext,
-            TaskDatabase::class.java,
-            "taskdb")
+            PersonDatabase::class.java,
+            "personsDB")
             .allowMainThreadQueries()
             .build()
-        dao = db.taskDao()
+
+        dao = db.personDao()
         list.addAll(dao.all)
 
         adapter.onItemClick = {
-            // open EditActivity
-            val intent = Intent(this, EditActivity::class.java)
-            intent.putExtra(ITEM_KEY, list.get(it).title)
-            intent.putExtra(ITEM_ID_KEY, it)
+            // open ContactViewActivity
+            val intent = Intent(this, ContactViewActivity::class.java)
+            intent.putExtra(ITEM_KEY, list.get(it).firstName)
+            intent.putExtra(ITEM_ID_KEY, list.get(it).id)
             startActivityForResult(intent, REQUEST_CODE)
         }
 
-        adapter.onItemClickDelete = {
-            dao.delete(list[it])
-            this.list.removeAt(it);
-            adapter.notifyItemRemoved(it);
+        adapter.onItemClickCall = {
+            val phoneNo: String = list.get(it).phone
+            if (!TextUtils.isEmpty(phoneNo)) {
+                val dial = "tel:$phoneNo"
+                startActivity(Intent(Intent.ACTION_DIAL, Uri.parse(dial)))
+            } else {
+                Toast.makeText(this@MainActivity, "Enter a phone number", Toast.LENGTH_SHORT).show()
+            }
         }
 
         val recyclerView = findViewById<RecyclerView>(R.id.recyclerView)
         recyclerView.layoutManager = LinearLayoutManager(this)
         recyclerView.adapter = adapter
 
-        val editText = findViewById<EditText>(R.id.editTextTextPersonName)
-        val button = findViewById<Button>(R.id.button)
-        button.setOnClickListener {
-            val title = editText.text.toString()
-            if (title.isNotBlank()) {
-                editText.text.clear()
-                val task = TaskEntity()
-                task.title = title
-                task.id = dao.add(task)
-                list.add(task)
-                adapter.notifyItemInserted(list.lastIndex)
-            }
+        val searchEditText = findViewById<EditText>(R.id.editTextTextPersonName)
+        //val txt = findViewById<TextView>(R.id.textView2)
+
+        searchEditText.addTextChangedListener {
+            list.clear()
+            adapter.notifyDataSetChanged()
+            list.addAll(dao.getByName(searchEditText.text.toString()))
+        }
+
+        val buttonAdd = findViewById<Button>(R.id.button)
+
+        buttonAdd.setOnClickListener {
+            val title = searchEditText.text.toString()
+            val intent = Intent(this, AddActivity::class.java)
+            startActivityForResult(intent, REQUEST_CODE)
         }
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-
-        if (requestCode == REQUEST_CODE && resultCode == Activity.RESULT_OK) {
-            val result = data?.getStringExtra(EditActivity.RESULT_KEY)
-            val id = data?.getIntExtra(ITEM_ID_KEY, 0)
-
-            if (id != null && result != null) {
-                // change list item
-                list[id].title = result
-                // redraw list
-                adapter.notifyItemChanged(id)
-                // update DB
-
-                dao.update(list[id])
-            }
-        }
+        list.clear()
+        list.addAll(dao.all)
+        adapter.notifyDataSetChanged()
     }
 }
+
